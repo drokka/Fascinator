@@ -51,6 +51,7 @@ dependencies {
     // optional - Multiprocess support
     implementation "androidx.work:work-multiprocess:2.7.1"
     implementation 'androidx.core:core-ktx:+'
+    implementation 'androidx.core:core-ktx:+'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'

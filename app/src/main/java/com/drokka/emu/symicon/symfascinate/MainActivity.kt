@@ -1,30 +1,14 @@
 package com.drokka.emu.symicon.symfascinate
 
 import android.graphics.Bitmap
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
-import android.media.MediaCodecList
-import android.media.MediaFormat
-import android.media.MediaMuxer
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.Surface
 import android.view.SurfaceView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.ViewModelProvider
-import androidx.work.WorkManager
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.runInterruptible
-import java.io.File
-import java.time.LocalDateTime
-import java.time.ZoneOffset
 import java.util.concurrent.Executor
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.launch
 
 
 class MainActivity : AppCompatActivity() {
@@ -65,19 +49,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        viewModel = MainViewModel(applicationContext.filesDir) //ViewModelProvider(this)[MainViewModel::class.java]
+        viewModel = MainViewModel() //ViewModelProvider(this)[MainViewModel::class.java]
         //viewModel.filesDir = applicationContext.filesDir
         imageView = findViewById(R.id.imageView)
       //  workManager = WorkManager.getInstance(applicationContext)
 
         imageView.setOnClickListener {
             //saveAndRestartRec()
-            viewModel.reset()
+           // viewModel.fireOffEncodingJob(applicationContext)
+            viewModel.myEncoder.saveFile = true // set off save and reinitialise encoder/muxer
+            viewModel.reset(applicationContext)
+         //   viewModel.checkJobs(applicationContext)
         }
-        imageView.holder.addCallback(viewModel.onImageViewSurfaceDestroyed)
+      //  imageView.holder.addCallback(viewModel.onImageViewSurfaceDestroyed)
 
         bmFlow = viewModel.startFlow(this)
-        viewModel.collectBitmaps(imageView, bmFlow)
+        viewModel.collectBitmaps(applicationContext, bmFlow)
+        viewModel.myEncoder.filesDirPath = applicationContext.filesDir
+        viewModel.myEncoder.collectEncodeBitmaps(bmFlow)
 
         indexFlow = viewModel.startBufferWatchFlow()
          viewModel.collectBitmapWatch(imageView, indexFlow)
@@ -134,7 +123,7 @@ class MainActivity : AppCompatActivity() {
         encoder.start()
 
  */
-        muxerInit()
+        // muxerInit()
 
        // callGenerate()
     }
@@ -185,12 +174,16 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
       //  viewModel.saveAndRestartRec()
         viewModel.paused = true
+        viewModel.myEncoder.saveFile =true //set to save MP4 file
+
+        Log.d("onPause", "called from MainActivity")
 
         super.onPause()
     }
 
     override fun onResume() {
       //  viewModel.startEncoding()
+        Log.d("onResume", "called from MainActivity")
 
         viewModel.paused = false
         super.onResume()
@@ -198,18 +191,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-       viewModel.stopAndSave()
-        Log.d("onStop", "called stopAndSave")
+        viewModel.myEncoder.saveFile =true //set to save MP4 file
+
+      //  viewModel.fireOffEncodingJob(applicationContext)
+        Log.d("onStop", "called from MainActivity")
+      //  viewModel.checkJobs(applicationContext)
         super.onStop()
     }
     override fun releaseInstance(): Boolean {
-       // viewModel.stopAndSave()
+        viewModel.myEncoder.saveFile =true //set to save MP4 file
+
+        // viewModel.stopAndSave()
+      //  viewModel.fireOffEncodingJob(applicationContext)
+        Log.d("onStop", "called fireOffEncodingJob")
+       // viewModel.checkJobs(applicationContext)
 
         return super.releaseInstance()
     }
     override fun onDetachedFromWindow() {
+     //   viewModel.myEncoder.saveFile = true
+        Log.d("onDetachFromWindow", "saveFile set true")
       //  viewModel.stopAndSave()
 
+     //   viewModel.fireOffEncodingJob(applicationContext)
         super.onDetachedFromWindow()
 
 

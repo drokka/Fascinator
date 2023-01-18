@@ -8,39 +8,36 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import android.media.MediaCodec
-import android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG
-import android.media.MediaCodecInfo
-import android.media.MediaCodecList
-import android.media.MediaFormat
-import android.media.MediaMuxer
 import android.util.Log
-import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.UUID
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlin.math.absoluteValue
-import kotlinx.coroutines.flow.transform
-import java.lang.Thread.sleep
-import java.time.LocalDateTime
-import java.time.ZoneOffset
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.absoluteValue
 
 
 @SuppressLint("StaticFieldLeak")
-class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
+class MainViewModel : ViewModel(), SurfaceHolder.Callback {
 
 
     val onImageViewSurfaceDestroyed: SurfaceHolder.Callback? = this
@@ -54,7 +51,7 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
     var bgClr = doubleArrayOf(0.0, 0.08, 0.2, 1.0)
     var bgClrF = floatArrayOf(0.0f, 0.08f, 0.2f, 1.0f)
     var minClr = doubleArrayOf(0.5, 0.0, 0.1, 1.0)
-    var maxClr = doubleArrayOf(0.99, 0.6, 0.7, 1.0)
+    var maxClr = doubleArrayOf(0.99, 0.8, 0.9, 1.0)
     var clrFunction: String = "default"
 
     var clrFunctionExp: Double = 0.270000000107
@@ -68,6 +65,7 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
     var sameAsCount = 0
     var count = 0
     var bump = 0
+    var cacheIndex = 0
 
     val paint = Paint()
 
@@ -77,55 +75,64 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
     var maDir = -1.0
     var omegaDir = -1.0
     var betaDir = -1.0
-    val jump = 0.01
+    val jump = 0.001
 
     var resetting = AtomicBoolean(false)
-    var muxerStarted = false
-    var trackIndex = -1
 
-    lateinit var encoder: MediaCodec
-    var encoderStarted = false
-    lateinit var format: MediaFormat
 
-    lateinit var vidSurface: Surface
-    lateinit var mMuxer: MediaMuxer
-    val encoderType: String
+        val jobList :ArrayList<UUID> = ArrayList(0)
 
-    val KEY_BIT_RATE = 500000
-    val KEY_FRAME_RATE = 20
-    val KEY_I_FRAME_INTERVAL = 0
+    fun fireOffEncodingJob(context: Context){
 
-    init {
+            Log.d("fireOffEncodingJob", "Start creating work request")
+        for(ci in cacheIndex..cacheIndex) {
+            val cacheDir = File(context.cacheDir, "$ci").absolutePath
+            val filesDir = context.filesDir.absolutePath
+            val inputData = Data.Builder().putString("cacheDir", cacheDir)
+                .putString("filesDir", filesDir)
+                .build()
+            val encodeWorkRequest: OneTimeWorkRequest =
+                OneTimeWorkRequestBuilder<EncodeVideoWorker>()
+                    .setInputData(inputData)
+                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                    .build()
 
-        format = MediaFormat.createVideoFormat("video/avc", sz, sz) //viewModel.sz, viewModel.sz )
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "encode_$ci", ExistingWorkPolicy.KEEP,
+                encodeWorkRequest
+            )
 
-        format.setInteger(
-            MediaFormat.KEY_COLOR_FORMAT,
-            MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
-        )
-
-        format.setInteger(MediaFormat.KEY_BIT_RATE, KEY_BIT_RATE) //viewModel.sz * viewModel.sz)
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, KEY_FRAME_RATE)
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, KEY_I_FRAME_INTERVAL)
-
-        encoderType = MediaCodecList(MediaCodecList.ALL_CODECS).findEncoderForFormat(format)
-        encoder = MediaCodec.createByCodecName(encoderType)
-        //encoder = MediaCodec.createEncoderByType("video/avc")
-
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        vidSurface = encoder.createInputSurface()
-        encoder.start()
-        encoderStarted = true
+            jobList.add(encodeWorkRequest.id)
+        }
 
     }
 
-    fun reset() {
+    fun checkJobs(context: Context) {
+        for (id in jobList) {
+            val workInfo = WorkManager
+                .getInstance(context).getWorkInfoById(id)
+            Log.d("bitmapFlow", "work info for encodeWorkRequest: $workInfo")
+
+            try {
+                if (workInfo.get().state == WorkInfo.State.SUCCEEDED) {
+
+                    Log.d("checkJobs", "success for work: " + id + " " + workInfo.toString())
+
+                }
+            }catch (_:Exception){}
+        }
+    }
+
+    fun reset(applicationContext: Context) {
         // iconDef = IconDef()
+     //   fireOffEncodingJob(applicationContext)
         resetting.set(true)
 
         bitmapArrayList.clear()
 
-        saveAndRestartRec()
+        //saveAndRestartRec()
+
+
 
         iconDef.shakeUp()
         iters = startIters
@@ -135,9 +142,13 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
         sameAsCount = 0
         count = 0
         bump = 0
+        cacheIndex +=1
 
         resetting.set(false)
+      //  checkJobs(applicationContext)
     }
+
+    val myEncoder = Encoder(sz)
 
     fun startFlow(context: Context): Flow<Bitmap?> {
 
@@ -182,7 +193,8 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
                 // Emits the result of the request to the flow
                 delay(100) // Suspends the coroutine for some time
                 if (latestBitmap == null && !resetting.get()) {
-                    reset()
+
+                    reset(context)
 
                 } else {
                     moveParam()
@@ -202,12 +214,12 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
         return bitmapFlow
     }
 
-    fun collectBitmaps(imageView: SurfaceView, bitmapFlow: Flow<Bitmap?>) {
+    fun collectBitmaps(context: Context,bitmapFlow: Flow<Bitmap?>) {
         viewModelScope.launch(Dispatchers.Default) {
             bitmapFlow.collect {
                 if (!resetting.get()) {
                     bitmapArrayList.add(it)
-                    storeBitmap(it)  //Save once to disk so can be processed (encoded to video)
+                   // storeBitmap(context, it)  //Save once to disk so can be processed (encoded to video)
                 }
                 /*   if(bitmapArrayList.isNotEmpty() && bitmapArrayList.last().sameAs(it)){
                        sameAsCount+=1
@@ -226,8 +238,28 @@ class MainViewModel(var filesDir: File) : ViewModel(), SurfaceHolder.Callback {
         }
     }
 
-    private fun storeBitmap(it: Bitmap?) {
+    private fun storeBitmap(context: Context, it: Bitmap?) {
+        //Store in cacheIndex directory, appending count to filename.
+        try{
+            val imagesDirPath = File(context.cacheDir, "$cacheIndex")
+          //  Log.i("saveImage", "dirPath is:" + imagesDirPath.toString())
+            imagesDirPath.mkdirs()
+            val imFile = File(imagesDirPath, "bitmap_$count.png")
+            val pngStream = FileOutputStream(imFile)
+            //   image = BitmapFactory.decodeByteArray(outputData.pngBuffer, 0, outputData.pngBufferLen) // generatedImage.getBitmap()
+            it?.compress(
+                Bitmap.CompressFormat.PNG,
+                100,
+                pngStream
+            )
+            pngStream.flush()
+            pngStream.close()
+            Log.i("storeBitmap", "dirPath is:$imagesDirPath and file is $imFile")
 
+        } catch (xx: Exception) {
+            xx.message?.let { Log.e("saveImage", it) }
+
+        }
     }
 
     fun startBufferWatchFlow(): Flow<Int> {
@@ -316,42 +348,6 @@ Log.d("collectBitmapWatch", "exception " + xx.message)
                 return
             }
             // media encoder callback here?
-            if(!encoderStarted){
-                startEncoding()
-            }
-
-            val canv = vidSurface?.lockCanvas(Rect(0, 0, sz, sz))
-            canv?.drawBitmap(bitmapArrayList[i]!!, Rect(0, 0, sz, sz), Rect(0, 0, sz, sz), paint)
-            vidSurface?.unlockCanvasAndPost(canv)
-
-            var bufferInfo = MediaCodec.BufferInfo()
-            var outBufferId = encoder.dequeueOutputBuffer(bufferInfo, 100)
-
-            while (outBufferId >= 0) {
-                val encodedBuffer = encoder.getOutputBuffer(outBufferId)
-
-                // MediaMuxer is ignoring KEY_FRAMERATE, so I set it manually here
-                // to achieve the desired frame rate
-                //   bufferInfo.presentationTimeUs = presentationTimeUs
-
-                encodedBuffer?.also {
-                    if (!muxerStarted) {
-
-                        val mformat = encoder.outputFormat
-                        trackIndex = mMuxer.addTrack(mformat)
-                        mMuxer.start()
-                        muxerStarted = true
-                    }
-
-                    mMuxer.writeSampleData(trackIndex, encodedBuffer, bufferInfo)
-                    Log.d("makeVid", "muxer is writing buffer")
-                }
-                //  presentationTimeUs += 1000000/frameRate
-
-                encoder.releaseOutputBuffer(outBufferId, false)
-
-                outBufferId = encoder.dequeueOutputBuffer(bufferInfo, 100)
-            }
 
         }
     }
@@ -365,74 +361,20 @@ Log.d("collectBitmapWatch", "exception " + xx.message)
     }
 
     fun stopAndSave() {
-        if (encoderStarted) {
-            try {
-                encoder.signalEndOfInputStream()
-                encoder.flush()
-            } catch (xx: java.lang.Exception) {
-                Log.d("stopAndSave", "Exception encoder signalEndofInput: ${xx.message}")
-                encoder.reset()
-            }
-            encoder.stop()
-            encoderStarted = false
-        }
 
-        if (muxerStarted) {
-            mMuxer.stop()
-            muxerStarted = false
-            mMuxer.release() // muxerInit initialises  mMuxer again
-        }
-        encoder.release()
 
     }
 
     fun startEncoding() {
-        muxerInit()
-
-        //  val encoderType = MediaCodecList(MediaCodecList.ALL_CODECS).findEncoderForFormat(format)
-        encoder = MediaCodec.createByCodecName(encoderType)
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-         vidSurface = encoder.createInputSurface()
-        encoder.start()
-        encoderStarted = true
 
     }
 
     fun saveAndRestartRec() {
-        if (encoderStarted) {
-            try {
-                encoder.signalEndOfInputStream()
-                encoder.flush()
-            } catch (xx: java.lang.Exception) {
-                Log.d("saveAndRestart", "Exception encoder signalEndofInput: ${xx.message}")
-                encoder.reset()
-            }
-
-            encoder.stop()
-            encoderStarted = false
-            // encoder.release()
-        }
-        if (muxerStarted) {
-            mMuxer.stop()
-            mMuxer.release() // muxerInit initialises  mMuxer again
-        }
-        muxerStarted = false
-
-        muxerInit()
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        vidSurface = encoder.createInputSurface()
-        encoder.start()
-        encoderStarted = true
 
     }
 
     fun muxerInit() {
-        val saveFile = File(
-            filesDir, "vid" + LocalDateTime.now().toEpochSecond(
-                ZoneOffset.of("Z")
-            ).toString() + ".mp4"
-        ).toString()
-        mMuxer = MediaMuxer(saveFile, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+
     }
 
     fun moveParam() {
@@ -613,15 +555,15 @@ Log.d("collectBitmapWatch", "exception " + xx.message)
     }
 
     override fun surfaceCreated(p0: SurfaceHolder) {
-Log.d("SurfaceCreated", "imageView created")
+//Log.d("SurfaceCreated", "imageView created")
     }
 
     override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) {
     }
 
     override fun surfaceDestroyed(p0: SurfaceHolder) {
-            stopAndSave()
-        Log.d("surfaceDestroyed", "imageView destroyed stopAndSave called")
+     //       myEncoder.saveFile = true
+       // Log.d("surfaceDestroyed", "imageView destroyed stopAndSave called")
 
     }
 
