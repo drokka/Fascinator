@@ -2,6 +2,7 @@ package com.drokka.emu.symicon.symfascinate
 
 import android.util.Log
 import java.util.Date
+import java.util.Vector
 import kotlin.random.Random
 
 class IconDef(
@@ -79,4 +80,20 @@ class IconDef(
         return  quiltType
     }
 
+    fun params(): Vector<Double> {
+        val v = Vector<Double>(6)
+
+            v.addAll(listOf( lambda, alpha, beta, gamma, omega, ma))
+        return v
+    }
+
+    fun setParams(doubles: Vector<Double>?) {
+        if(doubles== null || doubles.size <6) return
+        lambda = doubles[0]
+        alpha = doubles[1]
+        beta = doubles[2]
+        gamma= doubles[3]
+        omega = doubles[4]
+        ma= doubles[5]
+    }
 }

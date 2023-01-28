@@ -1,8 +1,6 @@
 package com.drokka.emu.symicon.symfascinate
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Rect
 import android.media.MediaCodec
@@ -12,17 +10,15 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.util.Log
 import android.view.Surface
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
+class Encoder(val vidFileList: ArrayList<String>, sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
 
     var encoder: MediaCodec? = null
     var mMuxer: MediaMuxer? = null
@@ -30,6 +26,7 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
     var encoderStarted = false
     var trackIndex = -1
     var saveFile = false
+    var videoFilePath = ""
     var initialising = false
 
     var format: MediaFormat
@@ -93,13 +90,13 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
         encoder!!.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         vidSurface = encoder!!.createInputSurface()
         try {
-            val saveFile = File(
+            videoFilePath = File(
                 filesDirPath, "symVid" + LocalDateTime.now().toEpochSecond(
                     ZoneOffset.of("Z")
                 ).toString() + ".MP4"
             ).toString()
 
-            mMuxer = MediaMuxer(saveFile, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            mMuxer = MediaMuxer(videoFilePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
 
             encoder!!.start()
 
@@ -115,7 +112,7 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
         return
     }
 
-    fun collectEncodeBitmaps(bitmapFlow: Flow<Bitmap?>) {
+    fun collectEncodeBitmaps(bitmapFlow: Flow<Pair<Bitmap?, IconDef>?>) {
         CoroutineScope(Dispatchers.IO).launch {
             bitmapFlow.collect {
                 if(!encoderStarted){
@@ -128,10 +125,11 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
                     saveFile = false
                     //  initEncoder() // start up again
                 }
-                else if (encoder != null && mMuxer != null && it != null && vidSurface != null) {
+                else if (it != null) {
+                    if (encoder != null && mMuxer != null && it.first != null && vidSurface != null) {
                         val canv = vidSurface!!.lockCanvas(Rect(0, 0, width, height))
                         canv?.drawBitmap(
-                            it,
+                            it.first!!,
                             Rect(0, 0, width, height),
                             Rect(0, 0, width, height),
                             paint
@@ -168,6 +166,7 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
                         }
 
                     }
+                }
             }
         }
     }
@@ -197,9 +196,15 @@ class Encoder(sz: Int = 480, bitRate: Int = 2600000, frameRate: Int = 20) {
                 Log.d("stopAndSave", "Exception encoder mMuxer stop: $xx")
             }
             muxerStarted = false
+            mMuxer
             mMuxer!!.release()
         }
         encoder?.release()
+
+        if(File(videoFilePath).exists()){
+            vidFileList.add(videoFilePath)
+            Log.d("Encoder stopAndSave", "video file added $videoFilePath")
+        }
 
         encoder = null
         mMuxer = null

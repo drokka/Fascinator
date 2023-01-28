@@ -1,12 +1,18 @@
 package com.drokka.emu.symicon.symfascinate
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceView
+import android.view.View
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.FragmentContainerView
+import androidx.lifecycle.Observer
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.Executor
 
@@ -27,12 +33,13 @@ class MainActivity : AppCompatActivity() {
 
   //  lateinit var workManager: WorkManager
 
+    lateinit var symVidListAllObserver: Observer<MutableList<String>>
     lateinit var executor: Executor
 
     lateinit var imageView:SurfaceView
 
    // private val scope = CoroutineScope(ui)
-    lateinit var viewModel:MainViewModel
+    val viewModel = MainViewModel()
   /*  lateinit var encoder: MediaCodec
     lateinit var format: MediaFormat
 
@@ -42,14 +49,15 @@ class MainActivity : AppCompatActivity() {
     lateinit var saveFile:String
 
    */
-    lateinit var bmFlow: Flow<Bitmap? >
+  lateinit var bmFlow: Flow<Pair<Bitmap? , IconDef>?>
     lateinit var indexFlow:Flow<Int>
 
-    @RequiresApi(Build.VERSION_CODES.Q)
+   // lateinit var carousel:RecyclerView
+   // @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        viewModel = MainViewModel() //ViewModelProvider(this)[MainViewModel::class.java]
+       // viewModel = MainViewModel() //ViewModelProvider(this)[MainViewModel::class.java]
         //viewModel.filesDir = applicationContext.filesDir
         imageView = findViewById(R.id.imageView)
       //  workManager = WorkManager.getInstance(applicationContext)
@@ -63,6 +71,15 @@ class MainActivity : AppCompatActivity() {
         }
       //  imageView.holder.addCallback(viewModel.onImageViewSurfaceDestroyed)
 
+      //  if(carouselFragment== null) carouselFragment = CarouselFragment.newInstance("yeah","nah")
+        //viewModel.videoListLiveData.observe(this, carouselFragment!!)
+
+      //  carousel = findViewById(R.id.videoRecyclerView)
+       // carousel.adapter = VideoCarouselAdapter(viewModel, carousel, applicationContext)
+        //viewModel.videoListLiveData.observe(this, carousel.adapter as VideoCarouselAdapter )
+
+        viewModel.loadVids(applicationContext)
+
         bmFlow = viewModel.startFlow(this)
         viewModel.collectBitmaps(applicationContext, bmFlow)
         viewModel.myEncoder.filesDirPath = applicationContext.filesDir
@@ -70,36 +87,44 @@ class MainActivity : AppCompatActivity() {
 
         indexFlow = viewModel.startBufferWatchFlow()
          viewModel.collectBitmapWatch(imageView, indexFlow)
-
-      /*  lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // As collect is a suspend function, if you want to collect
-                // multiple flows in parallel, you need to do so in
-                // different coroutines
-                launch {
-                    bmFlow.collect {
-                        if (!viewModel.resetting.get()) {
-                            viewModel.bitmapArrayList.add(it)
-                        }
-                    }
-
-                    launch {
-                        indexFlow.collect {
-                            if (it >= 0 && !viewModel.resetting.get()) {
-                                try {
-                                    viewModel.makeVid(imageView, it)
-                                } catch (xx: java.lang.Exception) {
-                                    Log.d("collectBitmapWatch", "exception " + xx.message)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+/*
+        symVidListAllObserver = Observer<MutableList<String>> { list ->
+            Log.i("symVidListAllObserver", "symImageListAllObserver size is: " + list.size)
+            carousel.isDirty
         }
 
-       */
+        // Observe the LiveData, passing in this activity as the LifecycleOwner and the observer.
+        viewModel.videoListLiveData.observe(this, symVidListAllObserver)
+*/
+        /*  lifecycleScope.launch {
+              repeatOnLifecycle(Lifecycle.State.STARTED) {
+                  // As collect is a suspend function, if you want to collect
+                  // multiple flows in parallel, you need to do so in
+                  // different coroutines
+                  launch {
+                      bmFlow.collect {
+                          if (!viewModel.resetting.get()) {
+                              viewModel.bitmapArrayList.add(it)
+                          }
+                      }
+
+                      launch {
+                          indexFlow.collect {
+                              if (it >= 0 && !viewModel.resetting.get()) {
+                                  try {
+                                      viewModel.makeVid(imageView, it)
+                                  } catch (xx: java.lang.Exception) {
+                                      Log.d("collectBitmapWatch", "exception " + xx.message)
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+
+          }
+
+         */
 
 /*
 
@@ -139,7 +164,6 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
     /*
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveAndRestartRec() {
@@ -165,8 +189,27 @@ class MainActivity : AppCompatActivity() {
     }
 
      */
+    override fun onCreateView(name: String, context: Context, attrs: AttributeSet): View? {
 
+        val view = super.onCreateView(name, context, attrs)
+
+
+        //       if(carouselFragment == null) carouselFragment = CarouselFragment.newInstance( "yeah", "nah")
+
+//   null pointer here     viewModel.videoListLiveData.observe(this, carouselFragment!!.carousal?.adapter as VideoCarouselAdapter)
+
+        return view
+    }
     override fun onAttachedToWindow() {
+
+      /*  val container = findViewById<FragmentContainerView>(R.id.fragmentCarouselContainerView)
+
+        carousel = container?.findViewById<RecyclerView>(R.id.videoCarousel)?.also {
+
+            viewModel.videoListLiveData.observe(this, carousel!!.adapter as VideoCarouselAdapter)
+        }
+
+       */
         super.onAttachedToWindow()
 
     }
@@ -184,6 +227,17 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
       //  viewModel.startEncoding()
         Log.d("onResume", "called from MainActivity")
+        /*
+        if(carouselFragment!!.carousal != null) {
+            viewModel.videoListLiveData.observe(
+                this,
+                carouselFragment!!.carousal?.adapter as VideoCarouselAdapter
+            )
+        }else{
+            Log.d("Main Activity onResume", "carousel RecyclerView is null")
+        }
+
+         */
 
         viewModel.paused = false
         super.onResume()

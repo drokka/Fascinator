@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:backgroundTint="@android:color/holo_red_light"
+    android:foregroundTint="@android:color/holo_red_dark"
+    android:outlineAmbientShadowColor="@android:color/holo_blue_dark"
+    android:outlineSpotShadowColor="@color/purple_700"
+    tools:context=".CarouselFragment">
+
+    <TextView
+        android:id="@+id/textView2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TextView" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/videoCarousel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:backgroundTint="@android:color/holo_blue_light"
+        android:clickable="true"
+        android:foregroundTint="@color/black"
+        android:orientation="horizontal"
+        android:outlineAmbientShadowColor="@android:color/holo_red_dark"
+        android:outlineSpotShadowColor="@android:color/holo_red_light"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" >
+
+    </androidx.recyclerview.widget.RecyclerView>
+
+</FrameLayout>
